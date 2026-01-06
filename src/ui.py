@@ -27,6 +27,10 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         """Initialize the Mixamo Downloader UI."""
         super().__init__()
         
+        # Initialize thread reference
+        self.thread = None
+        self.worker = None
+        
         # Set the window title and size.
         self.setWindowTitle('Mixamo')
         self.setGeometry(100, 100, 1200, 800)
@@ -91,9 +95,9 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         anim_opt_lyt.addWidget(self.rb_tpose)
 
         # Add another horizontal layout to the footer.
-        # This layout will contain the Output Folder group box.
-        output_dir_lyt = QtWidgets.QHBoxLayout()
-        footer_lyt.addLayout(output_dir_lyt)
+        # This layout will contain the Output Folder and Proxy settings.
+        settings_lyt = QtWidgets.QHBoxLayout()
+        footer_lyt.addLayout(settings_lyt)
 
         # Create a group box where users can chose the output folder.
         gbox_output = QtWidgets.QGroupBox("Output Folder")
@@ -118,8 +122,50 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         gbox_output_lyt.addWidget(self.le_path)
         gbox_output_lyt.addWidget(tb_path)
 
-        # Add the group box to its corresponding layout.
-        output_dir_lyt.addWidget(gbox_output)
+        # Add the output folder group box to the settings layout.
+        settings_lyt.addWidget(gbox_output, 2)  # 2/3 width
+
+        # Create a group box for proxy settings.
+        gbox_proxy = QtWidgets.QGroupBox("HTTP Proxy (可选)")
+        gbox_proxy.setMaximumHeight(95)
+
+        gbox_proxy_lyt = QtWidgets.QVBoxLayout()
+        gbox_proxy.setLayout(gbox_proxy_lyt)
+
+        # Create proxy input field with placeholder.
+        self.le_proxy = QtWidgets.QLineEdit()
+        self.le_proxy.setPlaceholderText("例如: http://127.0.0.1:7890")
+        gbox_proxy_lyt.addWidget(self.le_proxy)
+
+        # Add the proxy group box to the settings layout.
+        settings_lyt.addWidget(gbox_proxy, 1)  # 1/3 width
+
+        # Add a horizontal layout for delay settings.
+        delay_lyt = QtWidgets.QHBoxLayout()
+        footer_lyt.addLayout(delay_lyt)
+
+        # Create a group box for delay settings.
+        gbox_delay = QtWidgets.QGroupBox("请求延迟 (避免429错误)")
+        gbox_delay.setMaximumHeight(70)
+
+        gbox_delay_lyt = QtWidgets.QHBoxLayout()
+        gbox_delay.setLayout(gbox_delay_lyt)
+
+        # Create label and spinbox for delay.
+        label_delay = QtWidgets.QLabel("每个请求后延迟:")
+        self.spin_delay = QtWidgets.QDoubleSpinBox()
+        self.spin_delay.setMinimum(0.0)
+        self.spin_delay.setMaximum(10.0)
+        self.spin_delay.setValue(0.5)  # 默认0.5秒
+        self.spin_delay.setSingleStep(0.1)
+        self.spin_delay.setSuffix(" 秒")
+        self.spin_delay.setToolTip("建议设置 0.5-2 秒来避免被限流")
+
+        gbox_delay_lyt.addWidget(label_delay)
+        gbox_delay_lyt.addWidget(self.spin_delay)
+        gbox_delay_lyt.addStretch()
+
+        delay_lyt.addWidget(gbox_delay)
 
         # Create the button that will launch the download process.
         self.get_btn = QtWidgets.QPushButton('Start download')
@@ -148,6 +194,13 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         
         # Set this widget as the central one for the Main Window.
         self.setCentralWidget(central_widget)
+    
+    def __del__(self):
+        """析构函数，确保资源被清理"""
+        try:
+            self.cleanup_resources()
+        except:
+            pass
 
     def get_access_token(self):
         """Enter a JavaScript command to retrieve the Mixamo access token.
@@ -195,9 +248,11 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         mode = self.get_mode()
         query = self.le_query.text()
         path = self.le_path.text()
+        proxy = self.le_proxy.text().strip()
+        delay = self.spin_delay.value()
 
         # Create a MixamoDownloader instance and move it to the new thread.
-        self.worker = MixamoDownloader(path, mode, query)
+        self.worker = MixamoDownloader(path, mode, query, proxy, delay)
         self.worker.moveToThread(self.thread)
 
         # As soon as the thread is started, the run method on the worker
@@ -278,3 +333,101 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
             return "query"
         elif self.rb_tpose.isChecked():
             return "tpose"
+
+    def closeEvent(self, event):
+        """Handle window close event to properly stop the thread and cleanup resources.
+        
+        :param event: Close event
+        :type event: QCloseEvent
+        """
+        try:
+            # Check if there's a running thread
+            if hasattr(self, 'thread') and self.thread and self.thread.isRunning():
+                # Ask user for confirmation
+                reply = QtWidgets.QMessageBox.question(
+                    self,
+                    '确认退出',
+                    '下载任务正在进行中，确定要退出吗？\n\n进度会保存，可以稍后继续。',
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.No
+                )
+                
+                if reply == QtWidgets.QMessageBox.Yes:
+                    # Stop the worker
+                    if hasattr(self, 'worker') and self.worker:
+                        try:
+                            self.worker.stop = True
+                        except RuntimeError:
+                            pass  # C++ 对象已删除
+                    
+                    # Wait for thread to finish (max 2 seconds)
+                    try:
+                        if not self.thread.wait(2000):
+                            # Force terminate if it doesn't stop
+                            self.thread.terminate()
+                            self.thread.wait(1000)
+                    except RuntimeError:
+                        pass
+                    
+                    # Clean up resources
+                    self.cleanup_resources()
+                    event.accept()
+                else:
+                    event.ignore()
+            else:
+                # Clean up resources even if no thread is running
+                self.cleanup_resources()
+                event.accept()
+        except Exception as e:
+            # 强制接受关闭，不要卡住
+            print(f"关闭时出错: {e}")
+            event.accept()
+    
+    def cleanup_resources(self):
+        """清理所有资源，特别是 WebEngine 相关组件"""
+        try:
+            # 清理浏览器组件
+            if hasattr(self, 'browser') and self.browser:
+                try:
+                    # 停止所有正在进行的操作
+                    self.browser.stop()
+                    
+                    # 清理页面
+                    page = self.browser.page()
+                    if page:
+                        try:
+                            # 停止所有脚本和加载
+                            page.runJavaScript("window.stop();")
+                            # 删除页面引用
+                            self.browser.setPage(None)
+                            page.deleteLater()
+                        except RuntimeError:
+                            pass  # C++ 对象已被删除
+                    
+                    # 清理浏览器
+                    self.browser.deleteLater()
+                    self.browser = None
+                except RuntimeError:
+                    pass  # C++ 对象已被删除
+            
+            # 清理线程和 worker
+            if hasattr(self, 'thread') and self.thread:
+                try:
+                    self.thread.deleteLater()
+                    self.thread = None
+                except RuntimeError:
+                    pass
+            
+            if hasattr(self, 'worker') and self.worker:
+                try:
+                    self.worker.deleteLater()
+                    self.worker = None
+                except RuntimeError:
+                    pass
+                
+        except RuntimeError as e:
+            # C++ 对象已被删除，忽略
+            pass
+        except Exception as e:
+            # 其他错误，记录但不阻止关闭
+            pass
