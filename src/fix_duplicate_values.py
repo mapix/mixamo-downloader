@@ -5,10 +5,22 @@ Add suffix to all duplicate values to ensure each ID has a unique description
 """
 
 import json
+import argparse
 from collections import defaultdict, Counter
 
 def main():
-    mixamo_anims_path = 'mixamo_anims.json'
+    parser = argparse.ArgumentParser(
+        description='Fix duplicate values in mixamo_anims.json by adding unique suffixes'
+    )
+    parser.add_argument(
+        'mixamo_anims_path',
+        nargs='?',
+        default='mixamo_anims.json',
+        help='Path to mixamo_anims.json file (default: mixamo_anims.json)'
+    )
+    
+    args = parser.parse_args()
+    mixamo_anims_path = args.mixamo_anims_path
     
     # Read original file
     print("=" * 70)

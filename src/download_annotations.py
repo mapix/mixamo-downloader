@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from collections import defaultdict
 import string
+import argparse
 from dotenv import load_dotenv, find_dotenv
 
 
@@ -21,7 +22,6 @@ load_dotenv(find_dotenv(usecwd=True) or find_dotenv())
 API_TOKEN = os.getenv('API_TOKEN')
 
 # Configuration
-OUTPUT_DIR = Path("mixamo-2026/annotations")
 BASE_URL = "https://www.mixamo.com/api/v1/products"
 
 # Request headers configuration
@@ -42,10 +42,30 @@ HEADERS = {
 }
 
 
-def create_output_directory():
+def parse_args():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(
+        description="Mixamo 动画元数据下载器 V2",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  %(prog)s --output annotations
+  %(prog)s -o /path/to/output/dir
+        """
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default="annotations",
+        help="输出目录路径 (默认: annotations)"
+    )
+    return parser.parse_args()
+
+
+def create_output_directory(output_dir):
     """Create output directory"""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"✓ Output directory: {OUTPUT_DIR}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"✓ Output directory: {output_dir}")
 
 
 def fetch_animations_page(query="", page=1, limit=96):
@@ -139,7 +159,7 @@ def fetch_by_letter(letter):
     return animations
 
 
-def download_all_annotations():
+def download_all_annotations(output_dir):
     """Download metadata for all animations"""
     print("=" * 70)
     print("Mixamo Animation Metadata Downloader V2 Improved")
@@ -147,7 +167,7 @@ def download_all_annotations():
     print("=" * 70)
 
     # Create output directory
-    create_output_directory()
+    create_output_directory(output_dir)
 
     # First try to query all Motion directly
     print("\n[Step 1] Trying to query all Motion directly...")
@@ -259,7 +279,7 @@ def download_all_annotations():
     saved_count = 0
 
     for animation_id, animation in all_animations.items():
-        file_path = OUTPUT_DIR / f"{animation_id}.json"
+        file_path = output_dir / f"{animation_id}.json"
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(animation, f, ensure_ascii=False, indent=2)
@@ -330,7 +350,7 @@ def download_all_annotations():
             print(f"\n     ... And {len(different_duplicates) - 5} more duplicate IDs with different data")
 
         # Save detailed difference report
-        diff_report_path = OUTPUT_DIR.parent / "duplicate_differences.json"
+        diff_report_path = output_dir.parent / "duplicate_differences.json"
         with open(diff_report_path, "w", encoding="utf-8") as f:
             json.dump(different_duplicates, f, ensure_ascii=False, indent=2)
         print(f"\n  Detailed difference report saved to: {diff_report_path}")
@@ -363,18 +383,20 @@ def download_all_annotations():
         ]
     }
 
-    summary_path = OUTPUT_DIR.parent / "download_summary.json"
+    summary_path = output_dir.parent / "download_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
-    print(f"\n  - Save location: {OUTPUT_DIR.absolute()}")
+    print(f"\n  - Save location: {output_dir.absolute()}")
     print(f"  - Detailed statistics: {summary_path}")
     print("=" * 70)
 
 
 if __name__ == "__main__":
     try:
-        download_all_annotations()
+        args = parse_args()
+        output_dir = Path(args.output)
+        download_all_annotations(output_dir)
     except KeyboardInterrupt:
         print("\n\nUser interrupted download")
     except Exception as e:
