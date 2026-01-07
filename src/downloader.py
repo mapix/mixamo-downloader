@@ -5,17 +5,22 @@ import requests
 import time
 import logging
 from datetime import datetime
+from pathlib import Path
 
 # Third-party modules
 from PySide2 import QtCore, QtWebEngineWidgets, QtWidgets
 
 # 配置日志
 log_filename = f"mixamo_downloader_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+log_path = Path("logs")
+log_path.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_filename, encoding='utf-8'),
+        logging.FileHandler(str(log_path / log_filename), encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
