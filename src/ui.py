@@ -126,7 +126,7 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         settings_lyt.addWidget(gbox_output, 2)  # 2/3 width
 
         # Create a group box for proxy settings.
-        gbox_proxy = QtWidgets.QGroupBox("HTTP Proxy (可选)")
+        gbox_proxy = QtWidgets.QGroupBox("HTTP Proxy (Optional)")
         gbox_proxy.setMaximumHeight(95)
 
         gbox_proxy_lyt = QtWidgets.QVBoxLayout()
@@ -134,7 +134,7 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
 
         # Create proxy input field with placeholder.
         self.le_proxy = QtWidgets.QLineEdit()
-        self.le_proxy.setPlaceholderText("例如: http://127.0.0.1:7890")
+        self.le_proxy.setPlaceholderText("e.g.: http://127.0.0.1:7890")
         gbox_proxy_lyt.addWidget(self.le_proxy)
 
         # Add the proxy group box to the settings layout.
@@ -145,21 +145,21 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         footer_lyt.addLayout(delay_lyt)
 
         # Create a group box for delay settings.
-        gbox_delay = QtWidgets.QGroupBox("请求延迟 (避免429错误)")
+        gbox_delay = QtWidgets.QGroupBox("Request delay (avoid 429 errors)")
         gbox_delay.setMaximumHeight(70)
 
         gbox_delay_lyt = QtWidgets.QHBoxLayout()
         gbox_delay.setLayout(gbox_delay_lyt)
 
         # Create label and spinbox for delay.
-        label_delay = QtWidgets.QLabel("每个请求后延迟:")
+        label_delay = QtWidgets.QLabel("Delay after each request:")
         self.spin_delay = QtWidgets.QDoubleSpinBox()
         self.spin_delay.setMinimum(0.0)
         self.spin_delay.setMaximum(10.0)
-        self.spin_delay.setValue(0.5)  # 默认0.5秒
+        self.spin_delay.setValue(0.5)  # Default 0.5 seconds
         self.spin_delay.setSingleStep(0.1)
-        self.spin_delay.setSuffix(" 秒")
-        self.spin_delay.setToolTip("建议设置 0.5-2 秒来避免被限流")
+        self.spin_delay.setSuffix(" seconds")
+        self.spin_delay.setToolTip("Recommended 0.5-2 seconds to avoid rate limiting")
 
         gbox_delay_lyt.addWidget(label_delay)
         gbox_delay_lyt.addWidget(self.spin_delay)
@@ -194,13 +194,6 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
         
         # Set this widget as the central one for the Main Window.
         self.setCentralWidget(central_widget)
-    
-    def __del__(self):
-        """析构函数，确保资源被清理"""
-        try:
-            self.cleanup_resources()
-        except:
-            pass
 
     def get_access_token(self):
         """Enter a JavaScript command to retrieve the Mixamo access token.
@@ -346,8 +339,8 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
                 # Ask user for confirmation
                 reply = QtWidgets.QMessageBox.question(
                     self,
-                    '确认退出',
-                    '下载任务正在进行中，确定要退出吗？\n\n进度会保存，可以稍后继续。',
+                    'Confirm Exit',
+                    'Download task is in progress, are you sure you want to exit?\n\nProgress will be saved, you can continue later.',
                     QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                     QtWidgets.QMessageBox.No
                 )
@@ -358,76 +351,62 @@ class MixamoDownloaderUI(QtWidgets.QMainWindow):
                         try:
                             self.worker.stop = True
                         except RuntimeError:
-                            pass  # C++ 对象已删除
+                            pass  # C++ object already deleted
                     
-                    # Wait for thread to finish (max 2 seconds)
+                    # Don't wait long for thread - terminate quickly
                     try:
-                        if not self.thread.wait(2000):
-                            # Force terminate if it doesn't stop
+                        if not self.thread.wait(500):  # Only wait 0.5 seconds
+                            # Force terminate immediately
                             self.thread.terminate()
-                            self.thread.wait(1000)
+                            self.thread.wait(100)  # Minimal wait after terminate
                     except RuntimeError:
                         pass
                     
-                    # Clean up resources
-                    self.cleanup_resources()
+                    # Quick cleanup without blocking operations
+                    self.cleanup_resources_quick()
                     event.accept()
                 else:
                     event.ignore()
             else:
-                # Clean up resources even if no thread is running
-                self.cleanup_resources()
+                # Quick cleanup
+                self.cleanup_resources_quick()
                 event.accept()
         except Exception as e:
-            # 强制接受关闭，不要卡住
-            print(f"关闭时出错: {e}")
+            # Force accept close, don't hang
+            print(f"Error on close: {e}")
             event.accept()
     
-    def cleanup_resources(self):
-        """清理所有资源，特别是 WebEngine 相关组件"""
+    def cleanup_resources_quick(self):
+        """Quick cleanup without blocking operations - designed to exit fast"""
         try:
-            # 清理浏览器组件
+            # Just mark objects for deletion, don't call any methods that might block
             if hasattr(self, 'browser') and self.browser:
                 try:
-                    # 停止所有正在进行的操作
-                    self.browser.stop()
-                    
-                    # 清理页面
-                    page = self.browser.page()
-                    if page:
-                        try:
-                            # 停止所有脚本和加载
-                            page.runJavaScript("window.stop();")
-                            # 删除页面引用
-                            self.browser.setPage(None)
-                            page.deleteLater()
-                        except RuntimeError:
-                            pass  # C++ 对象已被删除
-                    
-                    # 清理浏览器
+                    # Don't call stop() or setPage() - they can block
+                    # Just schedule for deletion
                     self.browser.deleteLater()
                     self.browser = None
-                except RuntimeError:
-                    pass  # C++ 对象已被删除
+                except:
+                    pass
             
-            # 清理线程和 worker
+            # Clean up thread and worker
             if hasattr(self, 'thread') and self.thread:
                 try:
                     self.thread.deleteLater()
                     self.thread = None
-                except RuntimeError:
+                except:
                     pass
             
             if hasattr(self, 'worker') and self.worker:
                 try:
                     self.worker.deleteLater()
                     self.worker = None
-                except RuntimeError:
+                except:
                     pass
-                
-        except RuntimeError as e:
-            # C++ 对象已被删除，忽略
+        except:
+            # Ignore all errors during cleanup
             pass
-        except Exception as e:
-            # 其他错误，记录但不阻止关闭
-            pass
+    
+    def cleanup_resources(self):
+        """Alias for backward compatibility"""
+        self.cleanup_resources_quick()

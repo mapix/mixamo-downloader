@@ -13,9 +13,6 @@ pip install PySide2
 
 Download the files from the `/src` folder to your own local directory, and double-click on the `main.pyw` script to launch the GUI.
 
-### For non-technical users
-If you don't have Python installed on your computer or you don't want to mess with all that coding stuff, download the `/dist` folder to your computer (~300MB) and run the `mixamo_downloader.exe`.
-
 ## How to use the Mixamo Downloader
 
 1. Log into your Mixamo account.
@@ -29,4 +26,4 @@ If you don't have Python installed on your computer or you don't want to mess wi
 6. You can cancel the process at any time by pressing the `Stop` button.
 
 > [!IMPORTANT]
-> Downloading all animations can be quite slow. We're dealing with a total of 2346 animations, so don't expect it to be lighting fast.
+> Downloading all animations can be quite slow. We're dealing with a total of 2446 animations, so don't expect it to be lighting fast.

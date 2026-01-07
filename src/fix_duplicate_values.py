@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-修复 mixamo_anims.json 中重复的 values
-对所有重复的 value 添加后缀，确保每个 ID 都有唯一的 description
+Fix duplicate values in mixamo_anims.json
+Add suffix to all duplicate values to ensure each ID has a unique description
 """
 
 import json
@@ -10,33 +10,85 @@ from collections import defaultdict, Counter
 def main():
     mixamo_anims_path = 'mixamo_anims.json'
     
-    # 读取原始文件
+    # Read original file
     print("=" * 70)
-    print("读取文件...")
+    print("Reading file...")
     print("=" * 70)
     with open(mixamo_anims_path, 'r', encoding='utf-8') as f:
         mixamo_anims = json.load(f)
     
-    print(f"原始文件中有 {len(mixamo_anims)} 个条目")
+    print(f"Original file has {len(mixamo_anims)} entries")
     
-    # 找出所有重复的 value 及其对应的 id 列表
+    # First, replace all '/' with '-' in values to make them filesystem-safe
+    print("\n" + "=" * 70)
+    print("Sanitizing values: Replacing '/' with '-'")
+    print("=" * 70)
+    
+    slash_count = 0
+    for id, value in mixamo_anims.items():
+        if '/' in value:
+            slash_count += 1
+            new_value = value.replace('/', '-')
+            mixamo_anims[id] = new_value
+            print(f"  {id}: '{value}' -> '{new_value}'")
+    
+    print(f"\n✅ Sanitized {slash_count} values containing '/'")
+    
+    if slash_count == 0:
+        print("  No '/' characters found in values")
+    
+    # Also replace double quotes which can cause issues in some filesystems
+    print("\n" + "=" * 70)
+    print("Sanitizing values: Replacing '\"' with \"'\"")
+    print("=" * 70)
+    
+    quote_count = 0
+    for id, value in mixamo_anims.items():
+        if '"' in value:
+            quote_count += 1
+            new_value = value.replace('"', "'")
+            mixamo_anims[id] = new_value
+            if quote_count <= 5:  # Only print first 5
+                print(f"  {id}: '{value}' -> '{new_value}'")
+    
+    print(f"\n✅ Sanitized {quote_count} values containing '\"'")
+    
+    if quote_count == 0:
+        print("  No '\"' characters found in values")
+    
+    # Track if any changes were made
+    changes_made = slash_count > 0 or quote_count > 0
+    
+    # Find all duplicate values and their corresponding ID lists
     value_to_ids = defaultdict(list)
     for id, value in mixamo_anims.items():
         value_to_ids[value].append(id)
     
-    # 找出所有有重复的 value
+    # Find all duplicate values
     duplicate_values = {v: ids for v, ids in value_to_ids.items() if len(ids) > 1}
     
-    print(f"发现 {len(duplicate_values)} 个重复的 value")
-    print(f"涉及 {sum(len(ids) for ids in duplicate_values.values())} 个 id")
+    print(f"\nFound {len(duplicate_values)} duplicate values")
+    print(f"Involving {sum(len(ids) for ids in duplicate_values.values())} IDs")
     
-    if not duplicate_values:
-        print("\n✅ 没有重复，无需处理！")
+    if not duplicate_values and not changes_made:
+        print("\n✅ No duplicates and no sanitization needed!")
         return
     
-    # 第一阶段：对所有涉及重复的 id 添加 -<后3位> 后缀
+    if not duplicate_values:
+        print("\n✅ No duplicates, but sanitization was performed")
+        # Skip to saving
+        sorted_mixamo_anims = dict(sorted(mixamo_anims.items()))
+        
+        with open(mixamo_anims_path, 'w', encoding='utf-8') as f:
+            json.dump(sorted_mixamo_anims, f, indent=4, ensure_ascii=False)
+        
+        print("\n✅ File has been updated and saved!")
+        print(f"📁 Path: {mixamo_anims_path}")
+        return
+    
+    # Phase 1: Add -<last 3 chars> suffix to all duplicate IDs
     print("\n" + "=" * 70)
-    print("第一阶段：为所有重复条目添加后缀（后3位）")
+    print("Phase 1: Adding suffix (last 3 chars) to all duplicate entries")
     print("=" * 70)
     
     ids_to_update = []
@@ -47,9 +99,9 @@ def main():
                 'original_value': value
             })
     
-    print(f"将为 {len(ids_to_update)} 个条目添加后缀\n")
+    print(f"Will add suffix to {len(ids_to_update)} entries\n")
     
-    # 更新所有需要添加后缀的条目（第一阶段：后3位）
+    # Update all entries that need suffix (Phase 1: last 3 chars)
     for item in ids_to_update:
         id = item['id']
         original_value = item['original_value']
@@ -57,23 +109,23 @@ def main():
         new_value = f"{original_value}-{suffix}"
         mixamo_anims[id] = new_value
     
-    print(f"✅ 第一阶段完成，添加了 {len(ids_to_update)} 个后缀")
+    print(f"✅ Phase 1 complete, added {len(ids_to_update)} suffixes")
     
-    # 检查是否还有重复
+    # Check for remaining duplicates
     all_values = list(mixamo_anims.values())
     value_counts = Counter(all_values)
     still_duplicates = {v: c for v, c in value_counts.items() if c > 1}
     
     if still_duplicates:
-        print(f"\n⚠️  仍有 {len(still_duplicates)} 个重复的 value")
-        print(f"   涉及 {sum(still_duplicates.values())} 个条目")
+        print(f"\n⚠️  Still {len(still_duplicates)} duplicate values")
+        print(f"   Involving {sum(still_duplicates.values())} entries")
         
-        # 第二阶段：处理仍然重复的条目
+        # Phase 2: Process still duplicate entries
         print("\n" + "=" * 70)
-        print("第二阶段：处理仍然重复的条目（使用更长后缀）")
+        print("Phase 2: Processing still duplicate entries (using longer suffix)")
         print("=" * 70)
         
-        # 重新收集重复信息
+        # Re-collect duplicate information
         value_to_ids_2 = defaultdict(list)
         for id, value in mixamo_anims.items():
             value_to_ids_2[value].append(id)
@@ -83,17 +135,17 @@ def main():
         processed_count = 0
         for value, ids in sorted(duplicate_values_2.items(), key=lambda x: len(x[1]), reverse=True):
             for id in ids:
-                # 获取原始 value（去掉之前添加的后缀）
+                # Get original value (remove previously added suffix)
                 original_value = value.rsplit('-', 1)[0]
                 
-                # 尝试用后6位
+                # Try using last 6 chars
                 suffix_6 = id[-6:]
                 new_value_6 = f"{original_value}-{suffix_6}"
                 
-                # 检查后6位是否还会重复
+                # Check if last 6 chars will still duplicate
                 other_values = [v for k, v in mixamo_anims.items() if k != id]
                 if new_value_6 in other_values:
-                    # 还是重复，使用完整ID
+                    # Still duplicate, use full ID
                     new_value = f"{original_value}-{id}"
                 else:
                     new_value = new_value_6
@@ -101,45 +153,44 @@ def main():
                 mixamo_anims[id] = new_value
                 processed_count += 1
         
-        print(f"✅ 第二阶段完成，处理了 {processed_count} 个条目")
+        print(f"✅ Phase 2 complete, processed {processed_count} entries")
     
-    # 按 key 排序并保存
+    # Sort by key and save
     print("\n" + "=" * 70)
-    print("保存文件...")
+    print("Saving file...")
     print("=" * 70)
     sorted_mixamo_anims = dict(sorted(mixamo_anims.items()))
     
     with open(mixamo_anims_path, 'w', encoding='utf-8') as f:
         json.dump(sorted_mixamo_anims, f, indent=4, ensure_ascii=False)
     
-    # 最终验证唯一性
+    # Final verification of uniqueness
     all_values = list(sorted_mixamo_anims.values())
     unique_values = set(all_values)
     
     print("\n" + "=" * 70)
-    print("最终结果")
+    print("Final results")
     print("=" * 70)
-    print(f"总条目数: {len(sorted_mixamo_anims)}")
-    print(f"唯一 value 数: {len(unique_values)}")
-    print(f"重复的条目数: {len(all_values) - len(unique_values)}")
+    print(f"Total entries: {len(sorted_mixamo_anims)}")
+    print(f"Unique values: {len(unique_values)}")
+    print(f"Duplicate entries: {len(all_values) - len(unique_values)}")
     
     if len(unique_values) == len(sorted_mixamo_anims):
-        print("\n🎉🎉🎉 完美！所有 {} 个条目都有唯一的 value！🎉🎉🎉".format(len(sorted_mixamo_anims)))
+        print("\n🎉🎉🎉 Perfect! All {} entries have unique values!🎉🎉🎉".format(len(sorted_mixamo_anims)))
     else:
-        print(f"\n⚠️  仍有 {len(all_values) - len(unique_values)} 个重复")
+        print(f"\n⚠️  Still {len(all_values) - len(unique_values)} duplicates")
         value_counts = Counter(all_values)
         still_dup = {v: c for v, c in value_counts.items() if c > 1}
-        print(f"   仍有 {len(still_dup)} 个不同的重复 value:")
+        print(f"   Still {len(still_dup)} different duplicate values:")
         for v, c in list(still_dup.items())[:10]:
-            print(f"     '{v}': {c} 次")
-            # 找出这些ID
+            print(f"     '{v}': {c} times")
+            # Find these IDs
             dup_ids = [k for k, val in sorted_mixamo_anims.items() if val == v]
             for did in dup_ids[:5]:
                 print(f"       - {did}")
     
-    print("\n✅ 文件已更新并保存！")
-    print(f"📁 路径: {mixamo_anims_path}")
+    print("\n✅ File has been updated and saved!")
+    print(f"📁 Path: {mixamo_anims_path}")
 
 if __name__ == '__main__':
     main()
-

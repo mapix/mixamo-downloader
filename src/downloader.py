@@ -10,7 +10,7 @@ from pathlib import Path
 # Third-party modules
 from PySide2 import QtCore, QtWebEngineWidgets, QtWidgets
 
-# 配置日志
+# Configure logging
 log_filename = f"mixamo_downloader_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 log_path = Path("logs")
@@ -99,32 +99,32 @@ class MixamoDownloader(QtCore.QObject):
         'https': self.proxy
       }
       
-      logging.info(f"使用代理: {self.proxy}")
+      logging.info(f"Using proxy: {self.proxy}")
       
       # Test proxy connection
       try:
-        logging.info("正在测试代理连接...")
+        logging.info("Testing proxy connection...")
         test_response = session.get("https://www.mixamo.com", timeout=10)
         if test_response.status_code in [200, 301, 302]:
-          logging.info("✅ 代理连接测试成功")
+          logging.info("✅ Proxy connection test successful")
         else:
-          logging.warning(f"⚠️ 代理返回状态码: {test_response.status_code}")
+          logging.warning(f"⚠️ Proxy returned status code: {test_response.status_code}")
       except Exception as e:
-        logging.warning(f"⚠️ 代理测试失败: {str(e)[:100]}")
+        logging.warning(f"⚠️ Proxy test failed: {str(e)[:100]}")
     else:
       session.proxies = {}
-      logging.info("直连模式（无代理）")
+      logging.info("Direct connection mode (no proxy)")
 
   def _request_get(self, url, headers=None, timeout=30):
-    """统一的 GET 请求方法"""
+    """Unified GET request method"""
     return session.get(url, headers=headers, timeout=timeout)
   
   def _request_post(self, url, json_data=None, headers=None, timeout=60):
-    """统一的 POST 请求方法"""
+    """Unified POST request method"""
     return session.post(url, json=json_data, headers=headers, timeout=timeout)
   
   def _download_file(self, url, file_path, timeout=120):
-    """统一的文件下载方法"""
+    """Unified file download method"""
     response = session.get(url, timeout=timeout)
     response.raise_for_status()
     with open(file_path, 'wb') as f:
@@ -133,12 +133,12 @@ class MixamoDownloader(QtCore.QObject):
 
   def run(self):
     logging.info("="*60)
-    logging.info("开始下载任务")
-    logging.info(f"下载模式: {self.mode}")
-    logging.info(f"输出路径: {self.path if self.path else '当前目录'}")
+    logging.info("Starting download task")
+    logging.info(f"Download mode: {self.mode}")
+    logging.info(f"Output path: {self.path if self.path else 'current directory'}")
     if self.query:
-      logging.info(f"搜索关键词: {self.query}")
-    logging.info(f"请求延迟: {self.delay} 秒")
+      logging.info(f"Search keyword: {self.query}")
+    logging.info(f"Request delay: {self.delay} seconds")
     logging.info("="*60)
     
     # Get the primary character ID and name.
@@ -148,11 +148,11 @@ class MixamoDownloader(QtCore.QObject):
     # If there's no character ID, it means that there was some problem
     # with the access token, so we better stop the code at this point. 
     if not character_id:
-      logging.error("无法获取角色ID，请检查是否已登录Mixamo")
+      logging.error("Unable to get character ID, please check if logged into Mixamo")
       return
     
-    logging.info(f"角色名称: {character_name}")
-    logging.info(f"角色ID: {character_id}")
+    logging.info(f"Character name: {character_name}")
+    logging.info(f"Character ID: {character_id}")
 
     # DOWNLOAD MODE: TPOSE
     if self.mode == "tpose":
@@ -172,7 +172,7 @@ class MixamoDownloader(QtCore.QObject):
       
       if os.path.exists(file_path):
         file_size = os.path.getsize(file_path) / 1024  # KB
-        logging.info(f"⏭️  T-Pose 已存在，跳过: {self.product_name} ({file_size:.2f} KB)")
+        logging.info(f"⏭️  T-Pose already exists, skipping: {self.product_name} ({file_size:.2f} KB)")
         self.current_task.emit(self.task)
         self.finished.emit()
         return
@@ -200,19 +200,19 @@ class MixamoDownloader(QtCore.QObject):
 
     # Check if we got any animations
     if not anim_data:
-      logging.error("❌ 无法获取动画列表，程序终止")
+      logging.error("❌ Unable to get animation list, program terminated")
       self.finished.emit()
       return
 
     # The following code will be run for both the "all" and "query" modes.
-    logging.info(f"总共需要下载 {len(anim_data)} 个动画")
+    logging.info(f"Total to download {len(anim_data)} animations")
     
     # Iterate the animation IDs and names dictionary.
     for idx, (anim_id, anim_name) in enumerate(anim_data.items(), 1):
 
       # Check if the 'Stop' button has been pressed in the UI.
       if self.stop:
-        logging.info("用户停止了下载")
+        logging.info("User stopped download")
         # Let the thread know that the worker has finished the job.
         # Stopping the function here with a return makes the thread actually
         # finish. Without it, the thread would remain active until every line
@@ -220,21 +220,13 @@ class MixamoDownloader(QtCore.QObject):
         self.finished.emit()
         return
 
-      logging.info(f"[{idx}/{len(anim_data)}] 处理动画: {anim_name} (ID: {anim_id})")
+      logging.info(f"[{idx}/{len(anim_data)}] Processing animation: {anim_name} (ID: {anim_id})")
       
       try:
-        # Build the animation payload, export and download it to disk.
-        anim_payload = self.build_animation_payload(character_id, anim_id)
+        # OPTIMIZATION: Use anim_name from mixamo_anims.json as the canonical filename
+        # Set self.product_name here so it's used consistently throughout
+        self.product_name = anim_name  # anim_name is actually the description
         
-        # If payload building failed, skip this animation
-        if not anim_payload:
-          logging.warning(f"⚠️  跳过动画（无法构建payload）: {anim_name}")
-          self.current_task.emit(self.task)
-          self.task += 1
-          continue
-        
-        # Check if file already exists BEFORE exporting (to save API quota)
-        # self.product_name is set by build_animation_payload
         if self.path:
           if not os.path.exists(self.path):
             os.makedirs(self.path, exist_ok=True)
@@ -242,15 +234,29 @@ class MixamoDownloader(QtCore.QObject):
         else:
           file_path = f"{self.product_name}.fbx"
         
+        # Check if file already exists BEFORE making any API requests
         if os.path.exists(file_path):
           file_size = os.path.getsize(file_path) / 1024  # KB
-          logging.info(f"⏭️  跳过已存在的文件: {self.product_name} ({file_size:.2f} KB)")
+          logging.info(f"⏭️  Skipping existing file: {self.product_name} ({file_size:.2f} KB)")
           # Update progress bar
           self.current_task.emit(self.task)
           self.task += 1
-          # Add a small delay even for skipped files
-          if self.delay > 0:
-            time.sleep(min(0.1, self.delay))
+          # No delay and no API request for skipped files - much faster!
+          continue
+        
+        # File doesn't exist, now build the payload (makes API request)
+        # Note: We've pre-set self.product_name to use mixamo_anims.json value
+        # Save it temporarily as build_animation_payload will overwrite it
+        predefined_name = self.product_name
+        anim_payload = self.build_animation_payload(character_id, anim_id)
+        # Restore the predefined name to ensure consistency
+        self.product_name = predefined_name
+        
+        # If payload building failed, skip this animation
+        if not anim_payload:
+          logging.warning(f"⚠️  Skipping animation (unable to build payload): {anim_name}")
+          self.current_task.emit(self.task)
+          self.task += 1
           continue
         
         url = self.export_animation(character_id, anim_payload)
@@ -263,14 +269,14 @@ class MixamoDownloader(QtCore.QObject):
           time.sleep(self.delay)
           
       except Exception as e:
-        logging.error(f"❌ 处理动画时发生异常: {anim_name}, 错误: {str(e)}")
-        # 确保进度条继续更新
+        logging.error(f"❌ Exception occurred while processing animation: {anim_name}, Error: {str(e)}")
+        # Ensure progress bar continues to update
         self.current_task.emit(self.task)
         self.task += 1
         continue
 
     logging.info("="*60)
-    logging.info("所有下载任务完成！")
+    logging.info("All download tasks completed!")
     logging.info("="*60)
     # Emit the 'finished' signal to let the UI know that worker is done.
     self.finished.emit()
@@ -283,7 +289,7 @@ class MixamoDownloader(QtCore.QObject):
     :rtype: str
     """
     try:
-      logging.info("正在获取角色ID...")
+      logging.info("Getting character ID...")
       # Send a GET request to the primary character endpoint.
       response = self._request_get(
         f"https://www.mixamo.com/api/v1/characters/primary",
@@ -291,28 +297,28 @@ class MixamoDownloader(QtCore.QObject):
         timeout=30)
       
       if response.status_code != 200:
-        logging.error(f"获取角色ID失败，状态码: {response.status_code}")
-        logging.error(f"响应内容: {response.text[:500]}")
+        logging.error(f"Failed to get character ID, status code: {response.status_code}")
+        logging.error(f"Response content: {response.text[:500]}")
         return None
 
       # Get the primary character ID.
       character_id = response.json().get("primary_character_id")
       
       if character_id:
-        logging.info(f"✅ 成功获取角色ID: {character_id}")
+        logging.info(f"✅ Successfully got character ID: {character_id}")
       else:
-        logging.error("响应中没有找到角色ID")
+        logging.error("Character ID not found in response")
         
       return character_id
       
     except requests.exceptions.Timeout:
-      logging.error("❌ 获取角色ID超时（30秒）")
+      logging.error("❌ Getting character ID timeout（30seconds)")
       return None
     except requests.exceptions.RequestException as e:
-      logging.error(f"❌ 获取角色ID失败: {str(e)}")
+      logging.error(f"❌ Failed to get character ID: {str(e)}")
       return None
     except Exception as e:
-      logging.error(f"❌ 获取角色ID时发生未知错误: {str(e)}")
+      logging.error(f"❌ Unknown error while getting character ID: {str(e)}")
       return None
 
   def get_primary_character_name(self):
@@ -322,7 +328,7 @@ class MixamoDownloader(QtCore.QObject):
     :rtype: str
     """
     try:
-      logging.info("正在获取角色名称...")
+      logging.info("Getting character name...")
       # Send a GET request to the primary character endpoint.
       response = self._request_get(
         f"https://www.mixamo.com/api/v1/characters/primary",
@@ -330,27 +336,27 @@ class MixamoDownloader(QtCore.QObject):
         timeout=30)
       
       if response.status_code != 200:
-        logging.error(f"获取角色名称失败，状态码: {response.status_code}")
+        logging.error(f"Failed to get character name, status code: {response.status_code}")
         return None
 
       # Get the primary character name.
       character_name = response.json().get("primary_character_name")
       
       if character_name:
-        logging.info(f"✅ 成功获取角色名称: {character_name}")
+        logging.info(f"✅ Successfully got character name: {character_name}")
       else:
-        logging.error("响应中没有找到角色名称")
+        logging.error("Character name not found in response")
         
       return character_name
       
     except requests.exceptions.Timeout:
-      logging.error("❌ 获取角色名称超时（30秒）")
+      logging.error("❌ Getting character name timeout（30seconds)")
       return None
     except requests.exceptions.RequestException as e:
-      logging.error(f"❌ 获取角色名称失败: {str(e)}")
+      logging.error(f"❌ Failed to get character name: {str(e)}")
       return None
     except Exception as e:
-      logging.error(f"❌ 获取角色名称时发生未知错误: {str(e)}")
+      logging.error(f"❌ Unknown error while getting character name: {str(e)}")
       return None
 
   def build_tpose_payload(self, character_id, character_name):
@@ -390,7 +396,7 @@ class MixamoDownloader(QtCore.QObject):
     :rtype: dict
     """
     try:
-      logging.info(f"正在搜索动画: '{query}'...")
+      logging.info(f"Searching animations: '{query}'...")
       
       # Initialize a counter for the page number.
       page_num = 1
@@ -403,7 +409,7 @@ class MixamoDownloader(QtCore.QObject):
         "query": query}
 
       # Send a GET request to the animations endpoint.
-      # 构造带参数的 URL
+      # Construct URL with parameters
       from urllib.parse import urlencode
       url_with_params = f"https://www.mixamo.com/api/v1/products?{urlencode(params)}"
       response = self._request_get(url_with_params,
@@ -411,14 +417,14 @@ class MixamoDownloader(QtCore.QObject):
         timeout=30)
       
       if response.status_code != 200:
-        logging.error(f"搜索动画失败，状态码: {response.status_code}")
+        logging.error(f"Failed to search animations, status code: {response.status_code}")
         return {}
 
       data = response.json()
 
       # Total number of pages.
       num_pages = data.get("pagination", {}).get("num_pages", 0)
-      logging.info(f"找到 {num_pages} 页结果")
+      logging.info(f"Found {num_pages} pages of results")
 
       # Initialize a list to store all animations found.
       animations = []
@@ -428,14 +434,14 @@ class MixamoDownloader(QtCore.QObject):
         try:
           params["page"] = page_num
           
-          # 构造带参数的 URL
+          # Construct URL with parameters
           url_with_params = f"https://www.mixamo.com/api/v1/products?{urlencode(params)}"
           response = self._request_get(url_with_params,
             headers=HEADERS,
             timeout=30)
           
           if response.status_code != 200:
-            logging.warning(f"获取第 {page_num} 页失败，跳过")
+            logging.warning(f"Getting page {page_num} page failed, skipping")
             page_num += 1
             continue
 
@@ -450,11 +456,11 @@ class MixamoDownloader(QtCore.QObject):
             time.sleep(self.delay)
             
         except requests.exceptions.Timeout:
-          logging.warning(f"获取第 {page_num} 页超时，跳过")
+          logging.warning(f"Getting page {page_num} page timeout, skipping")
           page_num += 1
           continue
         except Exception as e:
-          logging.warning(f"获取第 {page_num} 页出错: {str(e)}")
+          logging.warning(f"Getting page {page_num} page error: {str(e)}")
           page_num += 1
           continue
 
@@ -465,7 +471,7 @@ class MixamoDownloader(QtCore.QObject):
       for animation in animations:      
         anim_data[animation["id"]] = animation["description"]
 
-      logging.info(f"✅ 找到 {len(anim_data)} 个匹配的动画")
+      logging.info(f"✅ Found {len(anim_data)} matching animations")
       
       # Let the UI know how many animations are to be downloaded.
       self.total_tasks.emit(len(anim_data))    
@@ -473,13 +479,13 @@ class MixamoDownloader(QtCore.QObject):
       return anim_data
       
     except requests.exceptions.Timeout:
-      logging.error("❌ 搜索动画超时")
+      logging.error("❌ Search animations timeout")
       return {}
     except requests.exceptions.RequestException as e:
-      logging.error(f"❌ 搜索动画失败: {str(e)}")
+      logging.error(f"❌ Failed to search animations: {str(e)}")
       return {}
     except Exception as e:
-      logging.error(f"❌ 搜索动画时发生未知错误: {str(e)}")
+      logging.error(f"❌ Unknown error while searching animations: {str(e)}")
       return {}
 
   def get_all_animations_data(self):
@@ -498,7 +504,7 @@ class MixamoDownloader(QtCore.QObject):
     :rtype: dict   
     """
     try:
-      logging.info("正在加载动画列表...")
+      logging.info("Loading animation list...")
       
       # Initialize a dictionary to store all animation IDs and names.
       anim_data = {}
@@ -507,7 +513,7 @@ class MixamoDownloader(QtCore.QObject):
       with open("mixamo_anims.json", "r", encoding='utf-8') as file:
         anim_data = json.load(file)
 
-      logging.info(f"✅ 成功加载 {len(anim_data)} 个动画")
+      logging.info(f"✅ Successfully loaded {len(anim_data)} animations")
       
       # Let the UI know how many animations are to be downloaded.    
       self.total_tasks.emit(len(anim_data))
@@ -515,13 +521,13 @@ class MixamoDownloader(QtCore.QObject):
       return anim_data
       
     except FileNotFoundError:
-      logging.error("❌ 找不到 mixamo_anims.json 文件")
+      logging.error("❌ Cannot find mixamo_anims.json file")
       return {}
     except json.JSONDecodeError as e:
-      logging.error(f"❌ JSON 文件格式错误: {str(e)}")
+      logging.error(f"❌ JSON file format error: {str(e)}")
       return {}
     except Exception as e:
-      logging.error(f"❌ 加载动画列表时发生错误: {str(e)}")
+      logging.error(f"❌ Error loading animation list: {str(e)}")
       return {}
 
   def build_animation_payload(self, character_id, anim_id):
@@ -544,7 +550,7 @@ class MixamoDownloader(QtCore.QObject):
         timeout=30)
       
       if response.status_code != 200:
-        logging.error(f"获取动画信息失败，状态码: {response.status_code}, ID: {anim_id}")
+        logging.error(f"Failed to get animation info, status code: {response.status_code}, ID: {anim_id}")
         return None
 
       response_json = response.json()
@@ -569,7 +575,7 @@ class MixamoDownloader(QtCore.QObject):
       gms_hash = response_json.get("details", {}).get("gms_hash")
       
       if not gms_hash:
-        logging.error(f"动画没有 gms_hash 属性: {self.product_name}")
+        logging.error(f"Animation has no gms_hash property: {self.product_name}")
         return None
 
       # Read its 'params' and store their values.
@@ -605,16 +611,16 @@ class MixamoDownloader(QtCore.QObject):
       return anim_payload
       
     except requests.exceptions.Timeout:
-      logging.error(f"获取动画信息超时: ID {anim_id}")
+      logging.error(f"Getting animation info timeout: ID {anim_id}")
       return None
     except requests.exceptions.RequestException as e:
-      logging.error(f"获取动画信息失败: ID {anim_id}, 错误: {str(e)}")
+      logging.error(f"Failed to get animation info: ID {anim_id}, Error: {str(e)}")
       return None
     except (KeyError, IndexError, ValueError) as e:
-      logging.error(f"解析动画数据失败: ID {anim_id}, 错误: {str(e)}")
+      logging.error(f"Failed to parse animation data: ID {anim_id}, Error: {str(e)}")
       return None
     except Exception as e:
-      logging.error(f"构建动画payload时发生未知错误: ID {anim_id}, 错误: {str(e)}")
+      logging.error(f"Unknown error while building animation payload: ID {anim_id}, Error: {str(e)}")
       return None
 
   def export_animation(self, character_id, payload):
@@ -629,27 +635,27 @@ class MixamoDownloader(QtCore.QObject):
     :return: URL to download the animation
     :rtype: str
     """
-    MAX_RETRIES = 120  # 最多等待120秒（2分钟）
+    MAX_RETRIES = 120  # Max wait 120 seconds (2 minutes)
     retry_count = 0
     
     try:
       # Send a POST request to the export animations endpoint.
-      logging.info(f"正在导出动画: {self.product_name}")
-      # 对于 browser request，需要传递 JSON 数据
+      logging.info(f"Exporting animation: {self.product_name}")
+      # For browser request, need to pass JSON data
       import json as json_mod
       payload_dict = json_mod.loads(payload) if isinstance(payload, str) else payload
       response = self._request_post(
           f"https://www.mixamo.com/api/v1/animations/export",
           json_data=payload_dict,
           headers=HEADERS,
-          timeout=30  # 30秒请求超时
+          timeout=30  # 30seconds request timeout
       )
       
-      # 202 = Accepted (异步处理中)，200 = OK
+      # 202 = Accepted (async processing), 200 = OK
       if response.status_code == 429:
-        logging.warning(f"⚠️ 触发速率限制(429)，等待 30 秒后重试...")
+        logging.warning(f"⚠️ Rate limit triggered (429), waiting 30 seconds before retry...")
         time.sleep(30)
-        # 重试一次
+        # Retry once
         response = self._request_post(
             f"https://www.mixamo.com/api/v1/animations/export",
             json_data=payload_dict,
@@ -657,14 +663,14 @@ class MixamoDownloader(QtCore.QObject):
             timeout=30
         )
         if response.status_code == 429:
-          logging.error(f"❌ 仍然是 429，跳过此动画")
+          logging.error(f"❌ Still 429, skipping this animation")
           return None
       
       if response.status_code not in [200, 202]:
-        logging.error(f"导出请求失败，状态码: {response.status_code}")
+        logging.error(f"Export request failed, status code: {response.status_code}")
         return None
       
-      logging.debug(f"导出请求已接受，状态码: {response.status_code}")
+      logging.debug(f"Export request accepted, status code: {response.status_code}")
 
       # Initialize a 'status' flag.
       status = None
@@ -681,16 +687,16 @@ class MixamoDownloader(QtCore.QObject):
           response = self._request_get(
               f"https://www.mixamo.com/api/v1/characters/{character_id}/monitor",
               headers=HEADERS,
-              timeout=10  # 10秒超时
+              timeout=10  # 10seconds timeout
           )
           
           if response.status_code == 429:
-            logging.warning(f"⚠️ 监控请求触发 429，等待 30 秒...")
+            logging.warning(f"⚠️ Monitor request triggered 429, waiting 30 seconds...")
             time.sleep(30)
             continue
           
           if response.status_code != 200:
-            logging.warning(f"监控请求返回状态码: {response.status_code}, 重试 {retry_count}/{MAX_RETRIES}")
+            logging.warning(f"Monitor request returned status code: {response.status_code}, Retry {retry_count}/{MAX_RETRIES}")
             continue
 
           # The loop will end as soon as the status is 'completed'.
@@ -698,41 +704,41 @@ class MixamoDownloader(QtCore.QObject):
           status = response_json.get("status")
           
           if status == "processing":
-            if retry_count % 10 == 0:  # 每10秒记录一次
-              logging.info(f"动画 {self.product_name} 处理中... ({retry_count}秒)")
+            if retry_count % 10 == 0:  # Log every 10 seconds
+              logging.info(f"Animation {self.product_name} processing... ({retry_count}s)")
           elif status == "failed":
-            logging.error(f"动画 {self.product_name} 处理失败")
+            logging.error(f"Animation {self.product_name} processing failed")
             return None
             
         except requests.exceptions.Timeout:
-          logging.warning(f"监控请求超时，重试 {retry_count}/{MAX_RETRIES}")
+          logging.warning(f"Monitor request timeout, retry {retry_count}/{MAX_RETRIES}")
           continue
         except requests.exceptions.RequestException as e:
-          logging.error(f"监控请求异常: {str(e)}")
+          logging.error(f"Monitor request exception: {str(e)}")
           continue
         except Exception as e:
-          logging.error(f"解析响应时出错: {str(e)}")
+          logging.error(f"Error parsing response: {str(e)}")
           continue
       
-      # 检查是否超时
+      # Check if timeout
       if retry_count >= MAX_RETRIES:
-        logging.error(f"动画 {self.product_name} 处理超时（超过{MAX_RETRIES}秒），跳过")
+        logging.error(f"Animation {self.product_name} processing timeout (exceeded{MAX_RETRIES}seconds), skipping")
         return None
       
       # Grab the download link from the response.
       if status == "completed":
         download_link = response.json().get("job_result")
-        logging.info(f"动画 {self.product_name} 导出成功")
+        logging.info(f"Animation {self.product_name} export successful")
         return download_link
         
     except requests.exceptions.Timeout:
-      logging.error(f"导出请求超时: {self.product_name}")
+      logging.error(f"Export request timeout: {self.product_name}")
       return None
     except requests.exceptions.RequestException as e:
-      logging.error(f"导出请求失败: {self.product_name}, 错误: {str(e)}")
+      logging.error(f"Export request failed: {self.product_name}, Error: {str(e)}")
       return None
     except Exception as e:
-      logging.error(f"导出动画时发生未知错误: {self.product_name}, 错误: {str(e)}")
+      logging.error(f"Unknown error while exporting animation: {self.product_name}, Error: {str(e)}")
       return None
     
     return None
@@ -755,11 +761,11 @@ class MixamoDownloader(QtCore.QObject):
     if url:
       try:
         # Send a GET request to the download link.
-        logging.info(f"开始下载: {self.product_name}")
-        result = self._download_file(url, file_path, timeout=120)  # 120秒下载超时
+        logging.info(f"Starting download: {self.product_name}")
+        result = self._download_file(url, file_path, timeout=120)  # 120seconds download timeout
         
         file_size = result.get('size', 0) / 1024  # KB
-        logging.info(f"✅ 下载完成: {self.product_name} ({file_size:.2f} KB)")
+        logging.info(f"✅ Download completed: {self.product_name} ({file_size:.2f} KB)")
 
         # Let the UI know that a task has been completed.
         self.current_task.emit(self.task)
@@ -767,24 +773,24 @@ class MixamoDownloader(QtCore.QObject):
         self.task += 1
         
       except requests.exceptions.Timeout:
-        logging.error(f"❌ 下载超时: {self.product_name}")
-        # 即使失败也要更新进度
+        logging.error(f"❌ Download timeout: {self.product_name}")
+        # Update progress even if failed
         self.current_task.emit(self.task)
         self.task += 1
       except requests.exceptions.RequestException as e:
-        logging.error(f"❌ 下载失败: {self.product_name}, 错误: {str(e)}")
+        logging.error(f"❌ Download failed: {self.product_name}, Error: {str(e)}")
         self.current_task.emit(self.task)
         self.task += 1
       except IOError as e:
-        logging.error(f"❌ 保存文件失败: {self.product_name}, 错误: {str(e)}")
+        logging.error(f"❌ Failed to save file: {self.product_name}, Error: {str(e)}")
         self.current_task.emit(self.task)
         self.task += 1
       except Exception as e:
-        logging.error(f"❌ 下载时发生未知错误: {self.product_name}, 错误: {str(e)}")
+        logging.error(f"❌ Unknown error while downloading: {self.product_name}, Error: {str(e)}")
         self.current_task.emit(self.task)
         self.task += 1
     else:
-      logging.warning(f"⚠️  跳过下载（没有URL）: {self.product_name}")
-      # 即使跳过也要更新进度
+      logging.warning(f"⚠️  Skipping download (no URL): {self.product_name}")
+      # Update progress even if skipped
       self.current_task.emit(self.task)
       self.task += 1

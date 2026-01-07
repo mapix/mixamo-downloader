@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Mixamo Animation Metadata Downloader V2 Improved
-改进策略：
-1. 只下载 Motion 类型（不包含 MotionPack）
-2. 使用按字母搜索的方式减少分页重复
-3. 自动去重，对比重复ID的数据差异
+Improvement Strategy:
+1. Download only Motion type (excluding MotionPack)
+2. Use alphabetic search to reduce pagination duplicates
+3. Auto-deduplication with comparison of duplicate ID data differences
 """
 
 import requests
@@ -20,11 +20,11 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(usecwd=True) or find_dotenv())
 API_TOKEN = os.getenv('API_TOKEN')
 
-# 配置
+# Configuration
 OUTPUT_DIR = Path("mixamo-2026/annotations")
 BASE_URL = "https://www.mixamo.com/api/v1/products"
 
-# 请求头配置
+# Request headers configuration
 HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9,zh;q=0.8,zh-CN;q=0.7,ja;q=0.6,mt;q=0.5,it;q=0.4,da;q=0.3,zh-TW;q=0.2",
@@ -43,28 +43,28 @@ HEADERS = {
 
 
 def create_output_directory():
-    """创建输出目录"""
+    """Create output directory"""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"✓ 输出目录: {OUTPUT_DIR}")
+    print(f"✓ Output directory: {OUTPUT_DIR}")
 
 
 def fetch_animations_page(query="", page=1, limit=96):
     """
-    获取指定页的动画数据（仅 Motion 类型）
+    Get animation data for specified page (Motion type only)
 
     Args:
-        query: 搜索关键词
-        page: 页码
-        limit: 每页数量
+        query: Search keyword
+        page: Page number
+        limit: Items per page
 
     Returns:
-        dict: API 返回的 JSON 数据
+        dict: JSON data returned by API
     """
     params = {
         "page": page,
         "limit": limit,
         "order": "",
-        "type": "Motion",  # 只查询 Motion 类型
+        "type": "Motion",  # Query Motion type only
         "query": query
     }
 
@@ -73,24 +73,24 @@ def fetch_animations_page(query="", page=1, limit=96):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"\n✗ 请求失败 (query='{query}', page={page}): {e}")
+        print(f"\n✗ Request failed (query='{query}', page={page}): {e}")
         return None
 
 
 def compare_animations(anim1, anim2):
     """
-    对比两个动画数据是否完全相同
+    Compare if two animation data are completely identical
 
     Args:
-        anim1: 第一个动画数据
-        anim2: 第二个动画数据
+        anim1: First animation data
+        anim2: Second animation data
 
     Returns:
-        tuple: (是否相同, 差异列表)
+        tuple: (Whether identical, difference list)
     """
     differences = []
 
-    # 获取所有键
+    # Get all keys
     all_keys = set(anim1.keys()) | set(anim2.keys())
 
     for key in all_keys:
@@ -109,13 +109,13 @@ def compare_animations(anim1, anim2):
 
 def fetch_by_letter(letter):
     """
-    按字母搜索获取所有动画
+    Get all animations by alphabetic search
 
     Args:
-        letter: 搜索字母
+        letter: Search letter
 
     Returns:
-        list: 该字母下的所有动画
+        list: All animations under this letter
     """
     animations = []
     page = 1
@@ -134,75 +134,75 @@ def fetch_by_letter(letter):
         total_pages = pagination.get("num_pages", 1)
 
         page += 1
-        time.sleep(0.3)  # 避免请求过快
+        time.sleep(0.3)  # Avoid too fast requests
 
     return animations
 
 
 def download_all_annotations():
-    """下载所有动画的元数据"""
+    """Download metadata for all animations"""
     print("=" * 70)
-    print("Mixamo 动画元数据下载器 V2 Improved")
-    print("策略: 按字母搜索 + 自动去重")
+    print("Mixamo Animation Metadata Downloader V2 Improved")
+    print("Strategy: Alphabetic search + Auto deduplication")
     print("=" * 70)
 
-    # 创建输出目录
+    # Create output directory
     create_output_directory()
 
-    # 先尝试直接查询所有 Motion
-    print("\n[步骤 1] 尝试直接查询所有 Motion...")
+    # First try to query all Motion directly
+    print("\n[Step 1] Trying to query all Motion directly...")
     first_page = fetch_animations_page(query="", page=1, limit=96)
 
     if not first_page:
-        print("✗ 无法获取数据，请检查网络连接和 Authorization token")
+        print("✗ Unable to get data, please check network connection and Authorization token")
         return
 
     pagination = first_page.get("pagination", {})
     total_results = pagination.get("num_results", 0)
     total_pages = pagination.get("num_pages", 1)
 
-    print(f"  - Motion 总数: {total_results}")
-    print(f"  - 总页数: {total_pages}")
+    print(f"  - Total Motion count: {total_results}")
+    print(f"  - Total pages: {total_pages}")
 
-    # 存储所有动画数据
+    # Store all animation data
     all_animations = {}  # id -> animation_data
-    duplicate_info = defaultdict(list)  # id -> [所有出现的数据]
-    different_duplicates = []  # 存储数据不同的重复ID
-    letter_stats = {}  # 记录每个字母的统计
+    duplicate_info = defaultdict(list)  # id -> [all occurrence data]
+    different_duplicates = []  # store duplicate IDs with different data
+    letter_stats = {}  # Record statistics for each letter
 
     total_fetched = 0
-    no_new_count = 0  # 连续没有新增的查询次数
-    max_no_new = 5  # 连续5次没有新增就停止
-    queries_executed = 0  # 实际执行的查询次数
+    no_new_count = 0  # Consecutive queries with no new additions
+    max_no_new = 5  # Stop after 5 consecutive queries with no new additions
+    queries_executed = 0  # Actual number of queries executed
 
-    # 按字母搜索
-    print("\n[步骤 2] 按字母搜索获取动画...")
-    print(f"目标: 收集 {total_results} 个唯一动画")
+    # Alphabetic search
+    print("\n[Step 2] Get animations by alphabetic search...")
+    print(f"Target: Collect {total_results} unique animations")
     print("=" * 70)
 
-    # 26个字母 + 数字 + 特殊字符
+    # 26letters + digits + special chars
     search_queries = list(string.ascii_lowercase) + list(string.digits) + [""]
 
     for idx, query in enumerate(search_queries, 1):
-        # 检查是否已经收集到足够的唯一动画
+        # Check if enough unique animations have been collected
         if len(all_animations) >= total_results:
-            print(f"\n✓ 已收集到 {len(all_animations)} 个唯一动画（达到总数 {total_results}）")
-            print(f"跳过剩余 {len(search_queries) - idx + 1} 个查询")
+            print(f"\n✓ Collected {len(all_animations)} unique animations（reached total {total_results}）")
+            print(f"Skip remaining {len(search_queries) - idx + 1} queries")
             break
 
-        # 如果连续多次查询都没有新增，也提前退出
+        # Exit early if multiple consecutive queries have no new additions
         if no_new_count >= max_no_new:
-            print(f"\n⚠️  连续 {max_no_new} 次查询都没有新增动画，提前退出")
-            print(f"当前已收集: {len(all_animations)}/{total_results} 个唯一动画")
+            print(f"\n⚠️  Consecutive {max_no_new} queries with no new animations, exiting early")
+            print(f"Currently collected: {len(all_animations)}/{total_results} unique animations")
             break
 
-        query_label = f"'{query}'" if query else "'(其他)'"
+        query_label = f"'{query}'" if query else "'(Other)'"
         progress = f"({len(all_animations)}/{total_results})"
-        print(f"[{idx}/{len(search_queries)}] {progress} 搜索 {query_label}...", end=" ")
+        print(f"[{idx}/{len(search_queries)}] {progress} Search {query_label}...", end=" ")
 
         queries_executed += 1
 
-        # 获取该字母的所有动画
+        # Get all animations for this letter
         letter_animations = fetch_by_letter(query)
 
         new_count = 0
@@ -216,16 +216,16 @@ def download_all_annotations():
 
             total_fetched += 1
 
-            # 记录所有出现
+            # Record all occurrences
             duplicate_info[animation_id].append({
                 "query": query,
                 "data": animation
             })
 
-            # 检查是否已存在
+            # Check if already exists
             if animation_id in all_animations:
                 duplicate_count += 1
-                # 对比数据是否相同
+                # Compare if data is identical
                 existing = all_animations[animation_id]
                 is_same, differences = compare_animations(existing, animation)
 
@@ -240,22 +240,22 @@ def download_all_annotations():
                 new_count += 1
                 all_animations[animation_id] = animation
 
-        letter_stats[query if query else "(其他)"] = {
+        letter_stats[query if query else "(Other)"] = {
             "fetched": len(letter_animations),
             "new": new_count,
             "duplicate": duplicate_count
         }
 
-        print(f"获取: {len(letter_animations)}, 新增: {new_count}, 重复: {duplicate_count} ✓")
+        print(f"Fetched: {len(letter_animations)}, New: {new_count}, Duplicate: {duplicate_count} ✓")
 
-        # 更新连续无新增计数
+        # Update consecutive no-new count
         if new_count == 0:
             no_new_count += 1
         else:
-            no_new_count = 0  # 有新增就重置计数
+            no_new_count = 0  # Reset count if there are new additions
 
-    # 保存所有唯一的动画
-    print(f"\n[步骤 3] 保存 {len(all_animations)} 个唯一动画...")
+    # Save all unique animations
+    print(f"\n[Step 3] Saving {len(all_animations)} unique animations...")
     saved_count = 0
 
     for animation_id, animation in all_animations.items():
@@ -265,79 +265,79 @@ def download_all_annotations():
                 json.dump(animation, f, ensure_ascii=False, indent=2)
             saved_count += 1
         except Exception as e:
-            print(f"\n✗ 保存 {animation_id} 失败: {e}")
+            print(f"\n✗ Saving {animation_id} failed: {e}")
 
-    # 统计重复ID
+    # Count duplicate IDs
     duplicate_ids = [id for id, occurrences in duplicate_info.items() if len(occurrences) > 1]
 
-    # 统计出现次数分布
+    # Count occurrence distribution
     from collections import Counter
     occurrence_counts = Counter([len(occurrences) for occurrences in duplicate_info.values()])
 
-    # 打印最终统计
+    # Print final statistics
     print("\n" + "=" * 70)
-    print(f"下载完成!")
-    print(f"\n数据统计:")
-    print(f"  - Motion 总数（API）: {total_results}")
-    print(f"  - 收集到的唯一动画: {len(all_animations)}")
-    print(f"  - 完整度: {len(all_animations)/total_results*100:.2f}%")
+    print(f"Download complete!")
+    print(f"\nData statistics:")
+    print(f"  - Motion total (API): {total_results}")
+    print(f"  - Unique animations collected: {len(all_animations)}")
+    print(f"  - Completeness: {len(all_animations)/total_results*100:.2f}%")
 
     if len(all_animations) >= total_results:
-        print(f"  ✓ 已收集全部动画！")
+        print(f"  ✓ All animations collected!")
     elif len(all_animations) >= total_results * 0.99:
-        print(f"  ✓ 收集接近完整（缺少 {total_results - len(all_animations)} 个）")
+        print(f"  ✓ Collection nearly complete (missing {total_results - len(all_animations)} items)")
     else:
-        print(f"  ⚠️  可能遗漏了 {total_results - len(all_animations)} 个动画")
+        print(f"  ⚠️  Possibly missing {total_results - len(all_animations)} animations")
 
-    print(f"\n搜索效率:")
-    print(f"  - 执行的查询数: {queries_executed}/{len(search_queries)}")
-    print(f"  - 查询覆盖率: {queries_executed/len(search_queries)*100:.1f}%")
-    print(f"  - 平均每查询新增: {len(all_animations)/queries_executed:.1f} 个") if queries_executed > 0 else None
+    print(f"\nSearch efficiency:")
+    print(f"  - Queries executed: {queries_executed}/{len(search_queries)}")
+    print(f"  - Query coverage: {queries_executed/len(search_queries)*100:.1f}%")
+    print(f"  - Average new per query: {len(all_animations)/queries_executed:.1f} items") if queries_executed > 0 else None
 
-    print(f"\n请求统计:")
-    print(f"  - API 返回总条目数: {total_fetched}")
-    print(f"  - 重复出现的 ID 数: {len(duplicate_ids)}")
-    print(f"  - 重复条目总数: {total_fetched - len(all_animations)}")
-    print(f"  - 去重率: {(1 - len(duplicate_ids)/len(all_animations))*100:.2f}%")
-    print(f"  - 成功保存文件数: {saved_count}")
+    print(f"\nRequest statistics:")
+    print(f"  - Total entries returned: {total_fetched}")
+    print(f"  - Duplicate ID count: {len(duplicate_ids)}")
+    print(f"  - Total duplicate entries: {total_fetched - len(all_animations)}")
+    print(f"  - Deduplication rate: {(1 - len(duplicate_ids)/len(all_animations))*100:.2f}%")
+    print(f"  - Files saved successfully: {saved_count}")
 
-    print(f"\n重复次数分布:")
+    print(f"\nDuplicate count distribution:")
     for count in sorted(occurrence_counts.keys(), reverse=True):
         num_ids = occurrence_counts[count]
         if count > 1:
-            print(f"  - 出现 {count} 次: {num_ids} 个 ID")
+            print(f"  - Appears {count} times: {num_ids} items ID")
 
-    # 检查数据一致性
-    print(f"\n数据一致性检查:")
+    # Check data consistency
+    print(f"\nData consistency check:")
     same_count = len(duplicate_ids) - len(different_duplicates)
-    print(f"  - 重复但数据完全相同: {same_count} 个")
-    print(f"  - 重复且数据有差异: {len(different_duplicates)} 个")
+    print(f"  - Duplicate but data identical: {same_count} items")
+    print(f"  - Duplicate with data differences: {len(different_duplicates)} items")
 
     if different_duplicates:
-        print(f"\n⚠️  发现 {len(different_duplicates)} 个重复ID但数据不同的情况:")
+        print(f"\n⚠️  Found {len(different_duplicates)} duplicate IDs with different data:")
         for i, dup in enumerate(different_duplicates[:5], 1):
             print(f"\n  {i}. ID: {dup['id']}")
-            print(f"     名称: {dup['name']}")
+            print(f"     Name: {dup['name']}")
             queries_str = ', '.join([f"'{q}'" for q in dup['queries']])
-            print(f"     出现在查询: {queries_str}")
-            print(f"     差异字段:")
+            print(f"     Appears in queries: {queries_str}")
+            print(f"     Different fields:")
             for diff in dup['differences'][:3]:
                 print(f"       - {diff['field']}:")
-                print(f"         值1: {str(diff['value1'])[:60]}")
-                print(f"         值2: {str(diff['value2'])[:60]}")
+                print(f"         Value1: {str(diff['value1'])[:60]}")
+                print(f"         Value2: {str(diff['value2'])[:60]}")
 
         if len(different_duplicates) > 5:
-            print(f"\n     ... 还有 {len(different_duplicates) - 5} 个数据不同的重复ID")
+            print(f"\n     ... And {len(different_duplicates) - 5} more duplicate IDs with different data")
 
-        # 保存详细的差异报告
+        # Save detailed difference report
         diff_report_path = OUTPUT_DIR.parent / "duplicate_differences.json"
         with open(diff_report_path, "w", encoding="utf-8") as f:
             json.dump(different_duplicates, f, ensure_ascii=False, indent=2)
-        print(f"\n  详细差异报告已保存到: {diff_report_path}")
+        print(f"\n  Detailed difference report saved to: {diff_report_path}")
 
-    # 保存详细统计信息
+    # Save detailed statistics
     summary = {
-        "strategy": "按字母搜索（优化版）",
+        "strategy": "Alphabetic search (optimized)",
         "motion_total": total_results,
         "unique_collected": len(all_animations),
         "completeness": len(all_animations) / total_results if total_results > 0 else 0,
@@ -367,8 +367,8 @@ def download_all_annotations():
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
-    print(f"\n  - 保存位置: {OUTPUT_DIR.absolute()}")
-    print(f"  - 详细统计: {summary_path}")
+    print(f"\n  - Save location: {OUTPUT_DIR.absolute()}")
+    print(f"  - Detailed statistics: {summary_path}")
     print("=" * 70)
 
 
@@ -376,9 +376,9 @@ if __name__ == "__main__":
     try:
         download_all_annotations()
     except KeyboardInterrupt:
-        print("\n\n✗ 用户中断下载")
+        print("\n\nUser interrupted download")
     except Exception as e:
-        print(f"\n\n✗ 发生错误: {e}")
+        print(f"\n\n✗ Error occurred: {e}")
         import traceback
         traceback.print_exc()
 
